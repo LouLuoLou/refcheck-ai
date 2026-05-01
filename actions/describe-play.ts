@@ -7,6 +7,7 @@ import type {
 } from "@/lib/types";
 import { AnalyzeInputSchema } from "@/lib/validate";
 import { hasGeminiKey } from "@/lib/env";
+import { mapDescribePlayError } from "@/lib/analysis-errors";
 import { runStage3, runStage3b, uploadVideoToGemini } from "@/lib/gemini";
 
 const ACCEPTED_MIMES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
@@ -194,7 +195,29 @@ export async function describePlayAction(
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
 
-    if (message.includes("timeout")) {
+    if (message === "missing_api_key") {
+      return {
+        ok: false,
+        error: "MODEL_ERROR",
+        message:
+          "The server is missing a GEMINI_API_KEY. Add it to .env.local or Vercel env, then redeploy.",
+        retryable: false,
+      };
+    }
+    if (message === "file_upload_timeout" || message === "file_not_active") {
+      const mapped = mapDescribePlayError(err);
+      return {
+        ok: false,
+        error: "UPLOAD_FAILED",
+        message: mapped.message,
+        retryable: mapped.retryable,
+      };
+    }
+    if (
+      message.includes("timeout") &&
+      !message.includes("stage3") &&
+      !message.includes("stage5")
+    ) {
       return {
         ok: false,
         error: "MODEL_TIMEOUT",
@@ -203,31 +226,13 @@ export async function describePlayAction(
         retryable: true,
       };
     }
-    if (message === "missing_api_key") {
-      return {
-        ok: false,
-        error: "MODEL_ERROR",
-        message:
-          "The server is missing a GEMINI_API_KEY. Add it to .env.local.",
-        retryable: false,
-      };
-    }
-    if (message === "file_upload_timeout" || message === "file_not_active") {
-      return {
-        ok: false,
-        error: "UPLOAD_FAILED",
-        message:
-          "We couldn't upload that clip for analysis. Check your connection and try again.",
-        retryable: true,
-      };
-    }
     console.error("describePlayAction failed:", err);
+    const mapped = mapDescribePlayError(err);
     return {
       ok: false,
       error: "MODEL_ERROR",
-      message:
-        "Something went wrong analyzing that clip. Try again, or upload a different file.",
-      retryable: true,
+      message: mapped.message,
+      retryable: mapped.retryable,
     };
   }
 }

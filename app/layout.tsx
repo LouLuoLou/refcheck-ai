@@ -41,6 +41,9 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
+/** Vercel / serverless: allow long Gemini file + video + verdict server actions (default is often 10s). */
+export const maxDuration = 60;
+
 export default function RootLayout({
   children,
 }: Readonly<{

@@ -7,6 +7,9 @@ export const metadata = {
   title: "Analyze a Play — RefCheck AI",
 };
 
+/** Server actions from this page (describe + synthesize) need room under Vercel’s cap. */
+export const maxDuration = 60;
+
 export default function AnalyzePage() {
   return (
     <>

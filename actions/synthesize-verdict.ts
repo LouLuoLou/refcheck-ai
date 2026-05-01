@@ -7,6 +7,7 @@ import type {
 } from "@/lib/types";
 import { PlayUnderstandingSchema } from "@/lib/validate";
 import { hasGeminiKey } from "@/lib/env";
+import { mapSynthesizeError } from "@/lib/analysis-errors";
 import { runStage5 } from "@/lib/gemini";
 import { selectRulesForCandidates } from "@/lib/rules/basketball";
 
@@ -24,7 +25,7 @@ export async function synthesizeVerdictAction(
       ok: false,
       error: "MODEL_ERROR",
       message:
-        "The server is missing a GEMINI_API_KEY. Add it to .env.local and restart the dev server.",
+        "The server is missing a GEMINI_API_KEY. Add it to .env.local or Vercel env, then redeploy.",
       retryable: false,
     };
   }
@@ -53,7 +54,11 @@ export async function synthesizeVerdictAction(
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
 
-    if (message.includes("timeout")) {
+    if (
+      message.includes("timeout") &&
+      !message.includes("stage5") &&
+      !message.includes("stage3")
+    ) {
       return {
         ok: false,
         error: "MODEL_TIMEOUT",
@@ -63,12 +68,12 @@ export async function synthesizeVerdictAction(
       };
     }
     console.error("synthesizeVerdictAction failed:", err);
+    const mapped = mapSynthesizeError(err);
     return {
       ok: false,
       error: "MODEL_ERROR",
-      message:
-        "Something went wrong producing the verdict. Please try again.",
-      retryable: true,
+      message: mapped.message,
+      retryable: mapped.retryable,
     };
   }
 }
