@@ -26,7 +26,8 @@ import { withGeminiRetries } from "@/lib/gemini-retry";
 const STAGE3_TIMEOUT_MS = 38_000;
 const STAGE3B_TIMEOUT_MS = 10_000;
 const STAGE5_TIMEOUT_MS = 42_000;
-const FILE_ACTIVE_POLL_INTERVAL_MS = 900;
+/** Slightly tighter polling while Files API reports PROCESSING → ACTIVE. */
+const FILE_ACTIVE_POLL_INTERVAL_MS = 550;
 const FILE_ACTIVE_POLL_TIMEOUT_MS = 28_000;
 
 export function withTimeout<T>(

@@ -15,8 +15,7 @@ import {
 } from "@/components/analysis-theater";
 import { saveAnalysis } from "@/lib/session";
 import type { BasketballCall, FullAnalysis } from "@/lib/types";
-import { describePlayAction } from "@/actions/describe-play";
-import { synthesizeVerdictAction } from "@/actions/synthesize-verdict";
+import { analyzeClipAction } from "@/actions/analyze-clip";
 import { useKeyboardShortcuts } from "@/lib/shortcuts";
 import { MAX_ANALYSIS_CLIP_SECONDS } from "@/lib/env";
 
@@ -94,78 +93,58 @@ export function AnalyzeForm() {
     fd.set("original_call", call ?? "");
     fd.set("original_call_freetext", freetext);
 
-    const describePromise = describePlayAction(fd);
-    await wait(1200);
+    const analysisPromise = analyzeClipAction(fd);
+    await wait(280);
     setTheater((s) => ({
       ...s,
       stage: "understanding",
       detail: "Watching the play",
     }));
+    await wait(220);
+    setTheater((s) => ({
+      ...s,
+      stage: "consulting_rulebook",
+      detail: "Consulting the NBA rulebook",
+    }));
 
-    const describe = await describePromise;
+    const result = await analysisPromise;
 
-    if (!describe.ok) {
+    if (!result.ok) {
       setTheater({
         open: true,
         stage: "error",
         detail: null,
-        errorMessage: describe.message,
-        retryable: describe.retryable,
+        errorMessage: result.message,
+        retryable: result.retryable,
       });
       return;
     }
 
-    const understanding = describe.understanding;
-    const previewEvent =
-      understanding.key_events[0]?.event ??
-      understanding.play_description.slice(0, 80);
-
-    setTheater((s) => ({
-      ...s,
-      stage: "understanding",
-      detail: previewEvent,
-    }));
-    await wait(500);
+    const { understanding, verdict } = result;
 
     setTheater((s) => ({
       ...s,
       stage: "consulting_rulebook",
       detail: prettifyTags(understanding.candidate_rules),
     }));
-
-    const synth = await synthesizeVerdictAction({
-      understanding,
-      original_call: call,
-      original_call_freetext: freetext.trim() || null,
-    });
-
-    if (!synth.ok) {
-      setTheater({
-        open: true,
-        stage: "error",
-        detail: null,
-        errorMessage: synth.message,
-        retryable: synth.retryable,
-      });
-      return;
-    }
+    await wait(100);
 
     setTheater((s) => ({
       ...s,
       stage: "rendering_verdict",
       detail: "Running integrity checks",
     }));
-    await wait(700);
+    await wait(220);
 
     const analysis: FullAnalysis = {
-      id: describe.analysisId,
+      id: result.analysisId,
       sport: "basketball",
       original_call: call,
       original_call_freetext: freetext.trim() || null,
       video_url: dropzone.objectUrl ?? "",
       is_sample: false,
       understanding,
-      verdict: synth.verdict,
+      verdict,
       created_at: new Date().toISOString(),
     };
     saveAnalysis(analysis);

@@ -160,3 +160,13 @@ export type SynthesizeVerdictResult =
       verdict: VerdictResult;
     }
   | ({ ok: false } & ServerActionError);
+
+/** One server action: upload → describe → verdict (saves a round-trip vs two actions). */
+export type AnalyzeClipResult =
+  | {
+      ok: true;
+      analysisId: string;
+      understanding: PlayUnderstanding;
+      verdict: VerdictResult;
+    }
+  | ({ ok: false } & ServerActionError);
