@@ -20,6 +20,8 @@ npm run dev
 # open http://localhost:3000
 ```
 
+**Video input:** Upload MP4/MOV/WEBM up to 40 MB. On `/analyze`, there’s a shortcut link to [Y2Mate](https://y2mate.ws/) if you need to save a YouTube clip as an MP4 elsewhere first (third‑party site — only use it where copyright/platform rules allow). Clips longer than **10 seconds** open an in-browser trimmer (powered by `@ffmpeg/ffmpeg`) so you can pick a window of up to **10 seconds** before analysis.
+
 Get a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey). The free tier works for testing; add billing for higher rate limits during a live demo.
 
 ## The experience
@@ -48,7 +50,7 @@ You can also open directly with `?demo=1&presenter=1` on any page.
 
 Two Gemini calls, one verdict.
 
-1. **Stage 3 — Play understanding.** The server action uploads the clip to the Gemini Files API, waits for `ACTIVE`, then asks `gemini-2.5-pro` for a strictly neutral JSON observation: `play_description`, `key_events`, `players_involved`, `observable_contact`, `ambiguity_notes`, `candidate_rules`. Temperature 0.2. Zod validates.
+1. **Stage 3 — Play understanding.** The server action uploads the clip to the Gemini Files API, waits for `ACTIVE`, then asks `gemini-2.5-flash` for a strictly neutral JSON observation: `play_description`, `key_events`, `players_involved`, `observable_contact`, `ambiguity_notes`, `candidate_rules`. Temperature 0.2. Zod validates.
 2. **Stage 4 — Rule selection.** Deterministic. The server filters `BASKETBALL_RULES` by any tag that matches `candidate_rules`, caps at 6 entries.
 3. **Stage 5 — Verdict synthesis.** A second Gemini call with the observation + selected rule excerpts. Returns `verdict`, `confidence_score`, `confidence_label`, `headline`, `reasoning`, `rule_citations`, `counterfactual`. Zod validates.
 4. **Post-validation.** Every citation's `quote` is checked as a verbatim substring of the named rule's `text`. Unmatched citations are stripped. If the verdict is Fair/Bad but has zero valid citations, it is downgraded to Inconclusive with a templated reasoning. Low-observable-contact on a contact call triggers a confidence penalty.
@@ -85,6 +87,7 @@ components/
   sample-library.tsx       grid of SampleCard
   sample-card.tsx          poster + title + verdict tag
   video-dropzone.tsx       file upload w/ client-side validation
+  video-trimmer.tsx        in-browser trim (ffmpeg.wasm) for clips >20s
   call-input.tsx           select + freetext
 
   analysis-theater.tsx     4-stage cinematic progress UI
@@ -111,7 +114,7 @@ lib/
   gemini.ts                SDK wrappers, uploadVideoToGemini, runStage3, runStage5
   prompts.ts               STAGE3_SYSTEM_PROMPT, STAGE5_SYSTEM_PROMPT, builders
   validate.ts              zod schemas + validateAndRepairVerdict + tryParseJson
-  rules/basketball.ts      15 NBA rule entries + selectRulesForCandidates
+  rules/basketball.ts      23 NBA rule entries + selectRulesForCandidates
   samples.ts               4 curated samples + pre-baked verdicts
   session.ts               sessionStorage helpers
   shortcuts.ts             useKeyboardShortcuts hook
@@ -140,20 +143,20 @@ public/samples/sample-c.mp4   The Rim Protector
 public/samples/sample-d.mp4   The Gather Step
 ```
 
-Each should be ≤ 20 seconds and ≤ 10 MB. See `public/samples/README.md` for sourcing guidance. The app still works without them — the pre-baked verdicts in `lib/samples.ts` fire on sample selection, and the verdict page shows the poster image if the MP4 is missing.
+Each should be ≤ 20 seconds and small enough for the Gemini upload path (see server limits in `actions/describe-play.ts`). See `public/samples/README.md` for sourcing guidance. The app still works without them — the pre-baked verdicts in `lib/samples.ts` fire on sample selection, and the verdict page shows the poster image if the MP4 is missing.
 
 ## Limitations
 
 - Single camera angle per clip. Many real calls require multi-angle review.
-- 20-second cap and 10 MB cap (kept small so server-action bodies stay under host limits during deploy).
+- Client accepts uploads up to 40 MB and can trim long clips in-browser; the analysis server action still enforces its own size cap for the Gemini file upload (see `actions/describe-play.ts`).
 - Basketball only in v1. The rules module (`lib/rules/`) is designed so a second sport is a drop-in addition.
 - NBA rulebook excerpts are paraphrased near-verbatim from the public [NBA Official Rulebook](https://official.nba.com/rulebook/). Post-validation guarantees we only cite text that appears in our shipped `RULES` array — but those excerpts themselves should be reviewed by a rules expert before production use.
-- Gemini 2.5 Pro is the sole provider. A multi-provider fallback is a v2 concern.
+- Gemini 2.5 Flash is the sole provider. A multi-provider fallback is a v2 concern.
 
 ## Tech
 
-Next.js 15 App Router · React 19 · TypeScript · Tailwind CSS v4 · Framer Motion · Radix UI · Zod · `@google/genai` (Gemini 2.5 Pro).
+Next.js 15 App Router · React 19 · TypeScript · Tailwind CSS v4 · Framer Motion · Radix UI · Zod · `@google/genai` (Gemini 2.5 Flash).
 
 ## License
 
-MIT. See `LICENSE` once added at repo creation time.
+MIT. See [LICENSE](./LICENSE).

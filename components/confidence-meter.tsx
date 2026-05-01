@@ -36,8 +36,22 @@ export function ConfidenceMeter({
   }, [score, delay, reduced]);
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-border-subtle">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-muted">
+          Confidence
+        </p>
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-2xl font-semibold tabular-nums text-foreground leading-none">
+            {display}
+          </span>
+          <span className="font-mono text-sm text-muted leading-none">%</span>
+          <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted leading-none">
+            · {label}
+          </span>
+        </div>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-border-subtle">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${score}%` }}
@@ -49,12 +63,6 @@ export function ConfidenceMeter({
           className={cn("h-full rounded-full", barClassName)}
         />
       </div>
-      <span className="font-mono text-lg tabular-nums text-foreground min-w-[2ch] text-right">
-        {display}
-      </span>
-      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-        {label}
-      </span>
     </div>
   );
 }

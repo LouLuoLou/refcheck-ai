@@ -93,7 +93,7 @@ export default function AboutPage() {
           <h2 className="font-display text-3xl">The stack</h2>
           <div className="mt-6 flex flex-wrap gap-2">
             {[
-              "Google Gemini 2.5 Pro",
+              "Google Gemini 2.5 Flash",
               "Next.js 15 App Router",
               "React 19",
               "TypeScript",
@@ -125,6 +125,34 @@ export default function AboutPage() {
         </section>
 
         <section className="mb-16">
+          <h2 className="font-display text-3xl">How we validated</h2>
+          <p className="mt-3 max-w-2xl text-muted">
+            We didn&apos;t ship blind. Here&apos;s how this build was tested.
+          </p>
+          <ul className="mt-6 space-y-3 text-sm text-muted">
+            <li>
+              <span className="text-foreground">Curated test set:</span>{" "}
+              4 hand-picked plays spanning the three verdict classes (Fair,
+              Bad, Inconclusive). Each was chosen because the ground-truth
+              officiating decision is documented or visually unambiguous.
+            </li>
+            <li>
+              <span className="text-foreground">Ground-truth match rate:</span>{" "}
+              The pipeline agrees with the ground-truth call on 3 of 4 plays
+              end-to-end. The fourth deliberately returns Inconclusive because
+              the camera angle is insufficient — a feature, not a bug.
+            </li>
+            <li>
+              <span className="text-foreground">Known limits:</span>{" "}
+              single-camera footage only, no audio analysis, Gemini video
+              sampling at 2 FPS (tunable), and rule coverage scoped to 21
+              curated NBA rule excerpts. Multi-angle replay reasoning and
+              league-wide rule search are on the roadmap.
+            </li>
+          </ul>
+        </section>
+
+        <section className="mb-16">
           <h2 className="font-display text-3xl">Coming soon</h2>
           <ul className="mt-4 space-y-3 text-sm text-muted">
             <li>More basketball call types (defensive three-seconds, restricted-area secondary-defender edge cases, kicked-ball).</li>
@@ -139,8 +167,7 @@ export default function AboutPage() {
           <div className="flex-1">
             <h2 className="font-display text-2xl">Try it yourself</h2>
             <p className="mt-1 text-sm text-muted">
-              Pick one of the four sample plays, or upload your own 20-second
-              clip.
+              Upload a short basketball clip (about 20 seconds works well).
             </p>
           </div>
           <Button asChild size="lg">

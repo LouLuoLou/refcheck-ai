@@ -7,8 +7,8 @@ const steps = [
   {
     num: "01",
     icon: Film,
-    title: "Upload or pick a clip",
-    body: "Drop in a short video of a basketball play, or use one of our sample plays.",
+    title: "Upload a clip",
+    body: "Drop in a short video of a basketball play (MP4 with H.264 is most reliable).",
   },
   {
     num: "02",

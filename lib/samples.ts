@@ -62,6 +62,8 @@ const sampleA_prebaked: FullAnalysis = {
     ],
     counterfactual:
       "If the defender had set both feet outside the restricted area before contact, the call would flip to a charge.",
+    counterargument:
+      "If the defender had actually beaten the driver to the spot a beat earlier, some officials would still accept the charge regardless of the restricted area.",
   },
   created_at: baseCreatedAt,
 };
@@ -111,6 +113,8 @@ const sampleB_prebaked: FullAnalysis = {
     ],
     counterfactual:
       "If the defender had still been sliding laterally when the offensive player initiated contact, the block call would have stood.",
+    counterargument:
+      "A strict interpretation of 'avoiding contact is the offensive player's responsibility only when a defender is clearly set' could support the block if the defender's torso rotation isn't perfectly square in the final frame before contact.",
   },
   created_at: baseCreatedAt,
 };
@@ -156,6 +160,8 @@ const sampleC_prebaked: FullAnalysis = {
     ],
     counterfactual:
       "A side-angle replay showing the ball's arc at the moment of contact would resolve this conclusively.",
+    counterargument:
+      "The ball being at the rim's plane at all could support goaltending under a strict reading — the downward-flight requirement is the only thing the angle fails to confirm.",
   },
   created_at: baseCreatedAt,
 };
@@ -200,6 +206,8 @@ const sampleD_prebaked: FullAnalysis = {
     ],
     counterfactual:
       "If the player's pivot foot had lifted and returned to the floor before the shot was released, the travel call would stand.",
+    counterargument:
+      "Officials who learned the pre-gather-step era rules could reasonably count the first movement as the first step, making the three-step sequence a travel under the older interpretation.",
   },
   created_at: baseCreatedAt,
 };

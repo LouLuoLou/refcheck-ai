@@ -8,6 +8,8 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@google/genai": "^1.51.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -19,6 +21,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "react": "19.2.4",

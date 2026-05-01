@@ -8,7 +8,6 @@ type Props = {
   visible: boolean;
   demoMode: boolean;
   presenterMode: boolean;
-  sampleLabel?: string | null;
   onOpenShortcuts: () => void;
 };
 
@@ -16,7 +15,6 @@ export function PresenterHUD({
   visible,
   demoMode,
   presenterMode,
-  sampleLabel,
   onOpenShortcuts,
 }: Props) {
   return (
@@ -44,11 +42,6 @@ export function PresenterHUD({
             <span className="inline-flex items-center gap-1.5 rounded-full bg-verdict-fair/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-verdict-fair">
               <Presentation className="size-3" />
               Presenter
-            </span>
-          )}
-          {sampleLabel && (
-            <span className="hidden font-mono text-[10px] uppercase tracking-[0.2em] text-muted sm:inline">
-              · {sampleLabel}
             </span>
           )}
           <button

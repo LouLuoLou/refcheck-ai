@@ -11,6 +11,10 @@ export type ShortcutMap = {
   r?: ShortcutHandler;
   /** Fires on "F". */
   f?: ShortcutHandler;
+  /** Fires on "J" — "Jump to contact" on verdict page. */
+  j?: ShortcutHandler;
+  /** Fires on "K" — toggle play/pause on verdict page. */
+  k?: ShortcutHandler;
   /** Fires on "?" or Shift+/. */
   question?: ShortcutHandler;
   /** Fires on ArrowLeft. */
@@ -94,6 +98,18 @@ export function useKeyboardShortcuts(map: ShortcutMap) {
           if (map.f) {
             e.preventDefault();
             map.f();
+          }
+          break;
+        case "j":
+          if (map.j) {
+            e.preventDefault();
+            map.j();
+          }
+          break;
+        case "k":
+          if (map.k) {
+            e.preventDefault();
+            map.k();
           }
           break;
         default:

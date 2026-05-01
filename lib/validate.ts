@@ -4,6 +4,7 @@ import type {
   CandidateRuleTag,
   ConfidenceLabel,
   ObservableContact,
+  PlayUnderstanding,
   PlayerRole,
   RuleEntry,
   Verdict,
@@ -24,6 +25,14 @@ export const CANDIDATE_RULE_TAGS = [
   "no_call",
   "incidental_contact",
   "illegal_screen",
+  "three_second_violation",
+  "defensive_three_seconds",
+  "five_second_inbound",
+  "backcourt_violation",
+  "flop",
+  "delay_of_game",
+  "intentional_foul",
+  "technical_foul",
 ] as const;
 
 // Accepts anything Gemini might throw at us and snaps it to our controlled vocab.
@@ -79,6 +88,38 @@ const RULE_SYNONYMS: Record<string, CandidateRuleTag> = {
   screen: "illegal_screen",
   moving_screen: "illegal_screen",
   pick: "illegal_screen",
+  three_second_violation: "three_second_violation",
+  three_seconds: "three_second_violation",
+  three_second: "three_second_violation",
+  offensive_three_seconds: "three_second_violation",
+  lane_violation: "three_second_violation",
+  defensive_three_seconds: "defensive_three_seconds",
+  defensive_three: "defensive_three_seconds",
+  defensive_3: "defensive_three_seconds",
+  defensive_3_seconds: "defensive_three_seconds",
+  illegal_defense: "defensive_three_seconds",
+  five_second_inbound: "five_second_inbound",
+  five_seconds: "five_second_inbound",
+  five_second: "five_second_inbound",
+  inbound_violation: "five_second_inbound",
+  backcourt_violation: "backcourt_violation",
+  backcourt: "backcourt_violation",
+  over_and_back: "backcourt_violation",
+  flop: "flop",
+  flopping: "flop",
+  embellishment: "flop",
+  fake_foul: "flop",
+  delay_of_game: "delay_of_game",
+  delay: "delay_of_game",
+  stall: "delay_of_game",
+  intentional_foul: "intentional_foul",
+  intentional: "intentional_foul",
+  flagrant_one: "intentional_foul",
+  off_ball_foul: "intentional_foul",
+  technical_foul: "technical_foul",
+  technical: "technical_foul",
+  tech: "technical_foul",
+  t_foul: "technical_foul",
 };
 
 function snapToCanonicalRule(raw: unknown): CandidateRuleTag | null {
@@ -340,6 +381,12 @@ export const VerdictResultSchema = z.object({
     (raw) => String(raw ?? "").trim().slice(0, 500) || "Additional camera angles would help resolve this play.",
     z.string().min(1).max(500)
   ),
+  counterargument: z.preprocess(
+    (raw) =>
+      String(raw ?? "").trim().slice(0, 500) ||
+      "No clear counter-argument available from the visible evidence.",
+    z.string().min(1).max(500)
+  ),
 });
 
 export type ParsedVerdictResult = z.infer<typeof VerdictResultSchema>;
@@ -380,11 +427,55 @@ function normalize(s: string): string {
   return s.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+/**
+ * Footwork / gather visibility gaps only. Avoid false positives on call narration
+ * e.g. "officials whistled a blocking foul" (would match ref + "block" in "blocking").
+ */
+const FOOTWORK_OCCLUSION_PATTERNS: RegExp[] = [
+  /\bobscur[^\n]{0,100}(?:feet|footwork|lower\s+body|legs|pivot|gather|step|steps|ball[- ]handler)/i,
+  /(?:feet|footwork|pivot|gather|steps)[^\n]{0,100}\bobscur/i,
+  /blocked\s+from\s+view[^\n]{0,70}(?:feet|footwork|pivot|gather|lower\s+body)/i,
+  /blocked\s+by\s+(?:a\s+)?(?:the\s+)?(?:ref|refs|official|officials|referee|referees)\b/i,
+  /behind\s+(?:a\s+)?(?:the\s+)?(?:ref|refs|official|officials|referee|referees)\b[^\n]{0,90}(?:feet|footwork|gather|pivot|step|lower\s+body)/i,
+  /behind\s+(?:a\s+)?(?:the\s+)?(?:ref|refs|official|officials|referee|referees)\b[^\n]{0,50}(?:obscur|hidden|not\s+visible)/i,
+  /cannot\s+see\s+(?:the\s+)?(?:feet|footwork|legs|lower\s+body)/i,
+  /feet\s+not\s+visible|footwork\s+not\s+visible/i,
+  /cannot\s+verify\s+(?:the\s+)?(?:footwork|feet|steps|pivot|gather)/i,
+  /\bnot\s+continuously\s+visible\b[^\n]{0,60}(?:feet|foot|step|pivot|gather)/i,
+  /off[- ]camera[^\n]{0,70}(?:feet|footwork|gather|pivot|step)/i,
+  /limited\s+view\s+of\s+(?:the\s+)?(?:feet|footwork|lower)/i,
+  /does\s+not\s+show\s+(?:the\s+)?(?:full\s+)?(?:step|steps|pivot|gather)/i,
+  /lower\s+body\s+(?:is\s+)?(?:not|partially)(?:\s+visible)?/i,
+  /unverified\s+footwork/i,
+  /pivot[^\n]{0,45}(?:not\s+visible|obscur|hidden)/i,
+  /gather[^\n]{0,45}(?:not\s+visible|obscur|hidden)/i,
+  /(?:ref|refs|official|officials|referee|referees)\b[^\n]{0,55}\b(?:body\s+)?(?:blocks|obscures)\s+(?:the\s+)?(?:view\s+)?(?:of\s+)?(?:the\s+)?(?:feet|footwork|lower\s+body|ball[- ]handler)/i,
+];
+
+const FOOTWORK_REASONING_HINT =
+  /footwork visibility|limited visibility of feet|cannot verify footwork|obscur.+feet|feet.+not.+visible|insufficient.+footwork/i;
+
+function isTravelRelated(
+  originalCall: BasketballCall | null,
+  candidateRules: readonly CandidateRuleTag[]
+): boolean {
+  if (originalCall === "traveling") return true;
+  return candidateRules.some((t) => t === "traveling" || t === "gather_step");
+}
+
+function textSuggestsFootworkOcclusion(
+  ambiguityNotes: string,
+  playDescription: string
+): boolean {
+  const text = `${ambiguityNotes}\n${playDescription}`;
+  return FOOTWORK_OCCLUSION_PATTERNS.some((re) => re.test(text));
+}
+
 export function validateAndRepairVerdict(
   parsed: ParsedVerdictResult,
   providedRules: RuleEntry[],
   originalCall: BasketballCall | null,
-  observableContact: ObservableContact
+  understanding: PlayUnderstanding
 ): VerdictResult {
   const rulesById = new Map(providedRules.map((r) => [r.id, r]));
 
@@ -408,6 +499,28 @@ export function validateAndRepairVerdict(
       "The available footage and the retrieved rulebook excerpts did not provide enough verbatim rule coverage to reach a confident verdict. A clearer angle or additional rule context would be required to resolve this play.";
   }
 
+  const observableContact = understanding.observable_contact;
+
+  if (
+    isTravelRelated(originalCall, understanding.candidate_rules) &&
+    textSuggestsFootworkOcclusion(
+      understanding.ambiguity_notes,
+      understanding.play_description
+    )
+  ) {
+    const suffix =
+      "Footwork visibility was limited in the observation; a definitive traveling verdict from this clip alone is not warranted.";
+    if (verdict === "FAIR_CALL" || verdict === "BAD_CALL") {
+      verdict = "INCONCLUSIVE";
+      score = Math.min(score, 40);
+      if (!FOOTWORK_REASONING_HINT.test(reasoning)) {
+        reasoning = `${reasoning.trimEnd()} ${suffix}`.trim();
+      }
+    } else if (verdict === "INCONCLUSIVE") {
+      score = Math.min(score, 45);
+    }
+  }
+
   if (
     observableContact === "none" &&
     originalCall &&
@@ -427,6 +540,7 @@ export function validateAndRepairVerdict(
     reasoning,
     rule_citations: validCitations,
     counterfactual: parsed.counterfactual,
+    counterargument: parsed.counterargument,
   };
 }
 

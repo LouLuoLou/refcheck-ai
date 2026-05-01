@@ -20,9 +20,9 @@ export default function AnalyzePage() {
             Was it a fair call?
           </h1>
           <p className="mt-4 max-w-xl text-muted">
-            Pick one of our sample plays, or upload your own short basketball
-            clip. Optionally tell us what the ref called — we&apos;ll compare
-            the play to the NBA rulebook and return a cited verdict.
+            Upload a short basketball clip. Optionally tell us what the ref
+            called — we&apos;ll compare the play to the NBA rulebook and return
+            a cited verdict.
           </p>
         </header>
 

@@ -5,8 +5,7 @@ import { Upload, X, FilmIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ACCEPTED_TYPES = ["video/mp4", "video/quicktime", "video/webm"];
-const MAX_SIZE = 10 * 1024 * 1024;
-const MAX_DURATION = 20;
+const MAX_SIZE = 40 * 1024 * 1024;
 
 export type DropzoneState = {
   file: File | null;
@@ -46,10 +45,16 @@ export function VideoDropzone({
   value,
   onChange,
   disabled,
+  suppressVideoPreview,
+  maxAnalysisSeconds = 10,
 }: {
   value: DropzoneState;
   onChange: (state: DropzoneState) => void;
   disabled?: boolean;
+  /** When true, hide inline preview (e.g. long clip — trimmer shown below). */
+  suppressVideoPreview?: boolean;
+  /** Shown in copy when trimmer is required (seconds). */
+  maxAnalysisSeconds?: number;
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const [hover, setHover] = React.useState(false);
@@ -73,21 +78,12 @@ export function VideoDropzone({
           file: null,
           durationSeconds: null,
           objectUrl: null,
-          error: "That file is too large. Please keep clips under 10 MB.",
+          error: "That file is too large. Please keep clips under 40 MB.",
         });
         return;
       }
 
       const duration = await probeDuration(raw);
-      if (duration !== null && duration > MAX_DURATION) {
-        onChange({
-          file: null,
-          durationSeconds: null,
-          objectUrl: null,
-          error: "That clip is too long. Please keep it under 20 seconds.",
-        });
-        return;
-      }
 
       const objectUrl = URL.createObjectURL(raw);
       onChange({
@@ -136,14 +132,22 @@ export function VideoDropzone({
             <X className="size-4" />
           </button>
         </div>
-        {value.objectUrl && (
-          <video
-            src={value.objectUrl}
-            className="w-full rounded-lg"
-            controls
-            muted
-            playsInline
-          />
+        {suppressVideoPreview ? (
+          <p className="text-sm text-muted">
+            This clip is longer than {maxAnalysisSeconds} seconds — use the
+            trimmer below to pick up to {maxAnalysisSeconds} seconds before
+            analyzing.
+          </p>
+        ) : (
+          value.objectUrl && (
+            <video
+              src={value.objectUrl}
+              className="w-full rounded-lg"
+              controls
+              muted
+              playsInline
+            />
+          )
         )}
       </div>
     );
@@ -189,7 +193,7 @@ export function VideoDropzone({
             Drop a clip here, or click to upload
           </p>
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-            MP4 · MOV · WEBM — up to 20s — up to 10 MB
+            MP4 · MOV · WEBM — up to 40 MB · analyze ≤{maxAnalysisSeconds}s (trim if longer)
           </p>
         </div>
       </label>

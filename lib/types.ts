@@ -42,7 +42,15 @@ export type CandidateRuleTag =
   | "out_of_bounds"
   | "no_call"
   | "incidental_contact"
-  | "illegal_screen";
+  | "illegal_screen"
+  | "three_second_violation"
+  | "defensive_three_seconds"
+  | "five_second_inbound"
+  | "backcourt_violation"
+  | "flop"
+  | "delay_of_game"
+  | "intentional_foul"
+  | "technical_foul";
 
 export type KeyEvent = {
   t_seconds: number;
@@ -88,6 +96,7 @@ export type VerdictResult = {
   reasoning: string;
   rule_citations: RuleCitation[];
   counterfactual: string;
+  counterargument: string;
 };
 
 export type AnalysisStage =
@@ -109,6 +118,10 @@ export type FullAnalysis = {
   understanding: PlayUnderstanding;
   verdict: VerdictResult;
   created_at: string;
+  // User-authored "what actually happened" annotation. Captured on the
+  // verdict page, persisted to sessionStorage, and included in the
+  // correction-JSON export for calibration / ground-truth labeling.
+  ground_truth_note?: string;
 };
 
 export type Sample = {

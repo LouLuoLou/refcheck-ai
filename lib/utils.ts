@@ -16,6 +16,14 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+// Snap a decimal timestamp to the nearest frame boundary. Default 30 fps is
+// the safest assumption for typical basketball highlight clips; overriding is
+// cheap if we ever ingest 24 fps (film) or 60 fps (slow-mo) clips.
+export function snapToFrame(t: number, fps = 30): number {
+  if (!Number.isFinite(t) || t < 0) return 0;
+  return Math.round(t * fps) / fps;
+}
+
 export function uid(): string {
   if (
     typeof globalThis !== "undefined" &&

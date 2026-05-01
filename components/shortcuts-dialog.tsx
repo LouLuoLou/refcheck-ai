@@ -12,7 +12,8 @@ const SHORTCUTS: Shortcut[] = [
   { keys: ["P"], description: "Toggle presenter mode" },
   { keys: ["R"], description: "Re-run current analysis" },
   { keys: ["F"], description: "Fullscreen verdict card" },
-  { keys: ["←", "→"], description: "Cycle through sample plays" },
+  { keys: ["J"], description: "Jump to the key moment (verdict page)" },
+  { keys: ["K"], description: "Play / pause video (verdict page)" },
   { keys: ["?"], description: "Open this dialog" },
   { keys: ["Esc"], description: "Close overlays" },
 ];

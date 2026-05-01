@@ -53,7 +53,7 @@ export function ArchitectureDiagram() {
 
         {/* Nodes */}
         {/* Browser */}
-        <Node x={80} y={100} w={200} h={70} label="Upload / pick sample" sub="AnalyzeForm.tsx" />
+        <Node x={80} y={100} w={200} h={70} label="Upload clip" sub="AnalyzeForm.tsx" />
         <Node x={680} y={100} w={200} h={70} label="Verdict page" sub="VerdictClient.tsx" />
 
         {/* Server */}

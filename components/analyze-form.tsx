@@ -5,24 +5,20 @@ import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { SportPicker } from "@/components/sport-picker";
-import { SampleLibrary } from "@/components/sample-library";
 import { VideoDropzone, type DropzoneState } from "@/components/video-dropzone";
+import { VideoTrimmer } from "@/components/video-trimmer";
 import { CallInput } from "@/components/call-input";
 import { Button } from "@/components/ui/button";
 import {
   AnalysisTheater,
   type TheaterStage,
 } from "@/components/analysis-theater";
-import { findSample } from "@/lib/samples";
 import { saveAnalysis } from "@/lib/session";
 import type { BasketballCall, FullAnalysis } from "@/lib/types";
-import { uid } from "@/lib/utils";
 import { describePlayAction } from "@/actions/describe-play";
 import { synthesizeVerdictAction } from "@/actions/synthesize-verdict";
 import { useKeyboardShortcuts } from "@/lib/shortcuts";
-import { SAMPLES } from "@/lib/samples";
-
-type SubmitMode = "sample" | "upload" | null;
+import { MAX_ANALYSIS_CLIP_SECONDS } from "@/lib/env";
 
 type TheaterState = {
   open: boolean;
@@ -54,9 +50,6 @@ export function AnalyzeForm() {
   const router = useRouter();
   const reduced = useReducedMotion();
 
-  const [selectedSampleId, setSelectedSampleId] = React.useState<string | null>(
-    null
-  );
   const [dropzone, setDropzone] = React.useState<DropzoneState>({
     file: null,
     durationSeconds: null,
@@ -68,94 +61,19 @@ export function AnalyzeForm() {
   const [theater, setTheater] = React.useState<TheaterState>(initialTheater);
   const [submitting, setSubmitting] = React.useState(false);
 
-  const mode: SubmitMode = selectedSampleId
-    ? "sample"
-    : dropzone.file
-      ? "upload"
-      : null;
+  const replaceDropzone = React.useCallback((next: DropzoneState) => {
+    setDropzone((prev) => {
+      if (prev.objectUrl && prev.objectUrl !== next.objectUrl) {
+        URL.revokeObjectURL(prev.objectUrl);
+      }
+      return next;
+    });
+  }, []);
 
-  React.useEffect(() => {
-    if (selectedSampleId) {
-      const sample = findSample(selectedSampleId);
-      if (sample) setCall(sample.original_call);
-    }
-  }, [selectedSampleId]);
-
-  const onSelectSample = (id: string) => {
-    if (selectedSampleId === id) {
-      setSelectedSampleId(null);
-      setCall(null);
-      return;
-    }
-    setSelectedSampleId(id);
-    if (dropzone.file) {
-      setDropzone({
-        file: null,
-        durationSeconds: null,
-        objectUrl: null,
-        error: null,
-      });
-    }
-  };
+  const canSubmit = Boolean(dropzone.file);
 
   const onDropzoneChange = (next: DropzoneState) => {
-    setDropzone(next);
-    if (next.file && selectedSampleId) setSelectedSampleId(null);
-  };
-
-  const runSamplePipeline = async () => {
-    const sample = findSample(selectedSampleId!);
-    if (!sample) {
-      setTheater({
-        open: true,
-        stage: "error",
-        detail: null,
-        errorMessage: "That sample could not be loaded.",
-        retryable: false,
-      });
-      return;
-    }
-
-    setTheater({
-      open: true,
-      stage: "uploading",
-      detail: "Loading sample clip…",
-      errorMessage: null,
-      retryable: false,
-    });
-    await wait(1100);
-
-    setTheater((s) => ({
-      ...s,
-      stage: "understanding",
-      detail: "Identifying players and contact",
-    }));
-    await wait(1300);
-
-    setTheater((s) => ({
-      ...s,
-      stage: "consulting_rulebook",
-      detail: prettifyTags(sample.prebaked.understanding.candidate_rules),
-    }));
-    await wait(1100);
-
-    setTheater((s) => ({
-      ...s,
-      stage: "rendering_verdict",
-      detail: "Running integrity checks",
-    }));
-    await wait(700);
-
-    const analysis: FullAnalysis = {
-      ...sample.prebaked,
-      id: uid(),
-      original_call: call,
-      original_call_freetext: freetext.trim() || null,
-      created_at: new Date().toISOString(),
-    };
-    saveAnalysis(analysis);
-    setTheater((s) => ({ ...s, stage: "complete" }));
-    router.push(`/analyze/${analysis.id}`);
+    replaceDropzone(next);
   };
 
   const runUploadPipeline = async () => {
@@ -177,7 +95,6 @@ export function AnalyzeForm() {
     fd.set("original_call_freetext", freetext);
 
     const describePromise = describePlayAction(fd);
-    // Pace so stage 1 is visible even when the upload is fast.
     await wait(1200);
     setTheater((s) => ({
       ...s,
@@ -257,14 +174,10 @@ export function AnalyzeForm() {
   };
 
   const submit = async () => {
-    if (!mode || submitting) return;
+    if (!canSubmit || submitting) return;
     setSubmitting(true);
     try {
-      if (mode === "sample") {
-        await runSamplePipeline();
-      } else {
-        await runUploadPipeline();
-      }
+      await runUploadPipeline();
     } catch (err) {
       console.error(err);
       setTheater({
@@ -290,48 +203,24 @@ export function AnalyzeForm() {
     void submit();
   };
 
-  const cycleSample = React.useCallback(
-    (direction: 1 | -1) => {
-      if (submitting) return;
-      const ids = SAMPLES.map((s) => s.id);
-      if (ids.length === 0) return;
-      const current = selectedSampleId ? ids.indexOf(selectedSampleId) : -1;
-      const next = (current + direction + ids.length) % ids.length;
-      setSelectedSampleId(ids[next]);
-      if (dropzone.file) {
-        setDropzone({
-          file: null,
-          durationSeconds: null,
-          objectUrl: null,
-          error: null,
-        });
-      }
-    },
-    [submitting, selectedSampleId, dropzone.file]
-  );
-
   useKeyboardShortcuts(
     React.useMemo(
       () => ({
-        left: () => cycleSample(-1),
-        right: () => cycleSample(1),
         r: () => {
-          if (!submitting && mode) {
+          if (!submitting && canSubmit) {
             void submit();
           }
         },
       }),
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [cycleSample, submitting, mode]
+      [submitting, canSubmit]
     )
   );
 
-  const buttonLabel =
-    mode === "sample"
-      ? "Analyze Sample Play"
-      : mode === "upload"
-        ? "Analyze My Clip"
-        : "Select a play or upload a clip";
+  const showTrimmer = Boolean(
+    dropzone.file &&
+      dropzone.durationSeconds !== null &&
+      dropzone.durationSeconds > MAX_ANALYSIS_CLIP_SECONDS
+  );
 
   return (
     <>
@@ -348,36 +237,62 @@ export function AnalyzeForm() {
           <SportPicker selected="basketball" />
         </section>
 
-        <section className="flex flex-col gap-4">
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-                Sample plays
-              </p>
-              <h2 className="mt-2 font-display text-2xl">
-                Four curated plays. Pick one.
-              </h2>
-            </div>
-          </div>
-          <SampleLibrary
-            selectedId={selectedSampleId}
-            onSelect={onSelectSample}
-          />
-        </section>
-
-        <div className="flex items-center gap-4">
-          <span className="h-px flex-1 bg-border-subtle" />
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-            Or upload your own
-          </span>
-          <span className="h-px flex-1 bg-border-subtle" />
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
+            Video clip
+          </p>
+          <h2 className="mt-2 font-display text-2xl">Upload your play</h2>
+          <p className="mt-2 text-sm text-muted">
+            Short basketball clip (trim to ≤{MAX_ANALYSIS_CLIP_SECONDS}s if
+            needed). Optionally add what the ref called below.
+          </p>
         </div>
+
+        <p className="text-sm text-muted">
+          Clips on YouTube? Use a downloader like{" "}
+          <a
+            href="https://y2mate.ws/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline-offset-2 hover:underline"
+          >
+            Y2Mate
+          </a>{" "}
+          to save an MP4 (where you&apos;re allowed to), then upload it here.
+        </p>
 
         <VideoDropzone
           value={dropzone}
           onChange={onDropzoneChange}
-          disabled={submitting || !!selectedSampleId}
+          disabled={submitting}
+          suppressVideoPreview={showTrimmer}
+          maxAnalysisSeconds={MAX_ANALYSIS_CLIP_SECONDS}
         />
+
+        {showTrimmer && dropzone.file && dropzone.durationSeconds !== null && (
+          <VideoTrimmer
+            file={dropzone.file}
+            rawDurationSeconds={dropzone.durationSeconds}
+            maxDurationSeconds={MAX_ANALYSIS_CLIP_SECONDS}
+            onTrimmed={(trimmedFile, start, end) => {
+              const nextUrl = URL.createObjectURL(trimmedFile);
+              replaceDropzone({
+                file: trimmedFile,
+                durationSeconds: Math.max(0, end - start),
+                objectUrl: nextUrl,
+                error: null,
+              });
+            }}
+            onCancel={() =>
+              replaceDropzone({
+                file: null,
+                durationSeconds: null,
+                objectUrl: null,
+                error: null,
+              })
+            }
+          />
+        )}
 
         <section className="flex flex-col gap-4">
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
@@ -396,11 +311,13 @@ export function AnalyzeForm() {
           <Button
             size="xl"
             onClick={submit}
-            disabled={!mode || submitting}
+            disabled={!canSubmit || submitting || showTrimmer}
             className="w-full sm:w-auto"
           >
-            {buttonLabel}
-            {mode && <ArrowRight className="size-4" />}
+            Analyze clip
+            {canSubmit && !showTrimmer && (
+              <ArrowRight className="size-4" />
+            )}
           </Button>
         </div>
       </motion.div>

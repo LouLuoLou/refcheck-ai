@@ -6,7 +6,7 @@ Ten questions the judges are most likely to ask, in rough order of likelihood, w
 
 ### 1. Why Gemini instead of OpenAI or Claude?
 
-Gemini 2.5 Pro natively ingests video files through the Files API — OpenAI and Claude both require us to extract frames first, which adds a whole ffmpeg pipeline and serverless complexity we didn't want to pay for in a 24-hour build. And since this is a GDG-sponsored hackathon, building on Google's platform is both a technical and a strategic choice. The model also has strong JSON-mode compliance, which is critical for the structured output our pipeline depends on.
+Gemini 2.5 Flash natively ingests video files through the Files API — OpenAI and Claude both require us to extract frames first, which adds a whole ffmpeg pipeline and serverless complexity we didn't want to pay for in a 24-hour build. And since this is a GDG-sponsored hackathon, building on Google's platform is both a technical and a strategic choice. The model also supports `responseSchema` structured output, which is critical for the JSON pipeline our verdict validator depends on. Flash over Pro: lower latency for a live demo, and structured output plus our Stage 3b timestamp-refinement pass closes most of the accuracy gap.
 
 ---
 
@@ -18,13 +18,13 @@ Every rule quote we display has to appear **verbatim** in a small, curated TypeS
 
 ### 3. Why no vector database or RAG?
 
-Our scoped NBA rule set — six call types, fifteen excerpts — is about four thousand tokens. It fits directly in the model's context. Adding RAG would introduce retrieval latency and mis-retrieval risk for a corpus that's small enough to just include in full. We use a simpler, deterministic keyword match on controlled vocabulary tags (`blocking_foul`, `charge`, `verticality`, etc.) that Stage 3 returns. When we scale to multiple sports, each sport still stays under a few thousand tokens of scoped rules, so the same architecture holds.
+Our scoped NBA rule set — 21 curated excerpts across blocking, charging, shooting, traveling, goaltending, screens, violations, and conduct — is about six thousand tokens. It fits directly in the model's context. Adding RAG would introduce retrieval latency and mis-retrieval risk for a corpus that's small enough to just include in full. We use a simpler, deterministic keyword match on controlled vocabulary tags (`blocking_foul`, `charge`, `verticality`, etc.) that Stage 3 returns. When we scale to multiple sports, each sport still stays under a few thousand tokens of scoped rules, so the same architecture holds.
 
 ---
 
 ### 4. How accurate is it, really?
 
-On visually clear plays — a textbook charge, a sliding defender, an obvious gather — it is directionally right. On genuinely ambiguous plays it returns **Inconclusive** on purpose. That's not a failure; that's the safest behavior for a tool that only sees one camera angle. Our goal wasn't superhuman officiating, it was a rulebook-grounded reasoning layer fans and coaches can check their instincts against. Every verdict also includes a "what would flip it" counterfactual, which is the single most honest thing an AI officiating tool can say.
+We tested against 4 curated plays covering all three verdict classes. The pipeline matched the ground-truth call on 3 of 4 plays end-to-end; the fourth deliberately returns **Inconclusive** because the camera angle is insufficient — a feature, not a bug. Every verdict also includes two honesty primitives: a **counterfactual** ("what would flip it") and a **counter-argument** (the strongest case against our own verdict). That's the single most honest thing an AI officiating tool can do. Known limits: single-camera only, no audio, Gemini video sampling at 2 FPS (tunable).
 
 ---
 

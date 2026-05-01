@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { usePathname } from "next/navigation";
 import { useDemoMode } from "@/lib/demo-mode";
 import { useKeyboardShortcuts } from "@/lib/shortcuts";
 import { PresenterHUD } from "@/components/presenter-hud";
@@ -10,7 +9,6 @@ import { ShortcutsDialog } from "@/components/shortcuts-dialog";
 export function PresenterShell({ children }: { children: React.ReactNode }) {
   const { ready, demoMode, presenterMode, toggleDemo, togglePresenter } =
     useDemoMode();
-  const pathname = usePathname();
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
 
   useKeyboardShortcuts(
@@ -34,8 +32,6 @@ export function PresenterShell({ children }: { children: React.ReactNode }) {
 
   const hudVisible = ready && (demoMode || presenterMode);
 
-  const samplesShortcuts = pathname === "/analyze";
-
   return (
     <>
       {children}
@@ -43,7 +39,6 @@ export function PresenterShell({ children }: { children: React.ReactNode }) {
         visible={hudVisible}
         demoMode={demoMode}
         presenterMode={presenterMode}
-        sampleLabel={samplesShortcuts ? "use ← → to browse samples" : null}
         onOpenShortcuts={() => setShortcutsOpen(true)}
       />
       <ShortcutsDialog

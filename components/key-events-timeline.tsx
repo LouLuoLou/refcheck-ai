@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import type { KeyEvent } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, snapToFrame } from "@/lib/utils";
+import { TIMESTAMP_OFFSET_SECONDS } from "@/lib/env";
 
 type Props = {
   events: KeyEvent[];
@@ -12,14 +13,28 @@ type Props = {
 
 export function KeyEventsTimeline({ events, videoRef, duration }: Props) {
   const [currentTime, setCurrentTime] = React.useState(0);
+
+  // Normalize event timestamps once: apply rehearsal offset and snap to the
+  // nearest frame boundary so markers land exactly on a renderable frame.
+  const normalizedEvents = React.useMemo(
+    () =>
+      events.map((e) => ({
+        ...e,
+        t_seconds: snapToFrame(
+          Math.max(0, e.t_seconds + TIMESTAMP_OFFSET_SECONDS)
+        ),
+      })),
+    [events]
+  );
+
   const effectiveDuration = React.useMemo(() => {
     if (duration && duration > 0) return duration;
-    const fromEvents = events.reduce(
+    const fromEvents = normalizedEvents.reduce(
       (max, e) => Math.max(max, e.t_seconds),
       0
     );
     return fromEvents > 0 ? fromEvents + 1 : 10;
-  }, [duration, events]);
+  }, [duration, normalizedEvents]);
 
   React.useEffect(() => {
     const video = videoRef.current;
@@ -32,13 +47,11 @@ export function KeyEventsTimeline({ events, videoRef, duration }: Props) {
   const seekTo = (t: number) => {
     const video = videoRef.current;
     if (!video) return;
+    video.pause();
     video.currentTime = t;
-    void video.play().catch(() => {
-      /* autoplay restrictions - ignore */
-    });
   };
 
-  if (events.length === 0) return null;
+  if (normalizedEvents.length === 0) return null;
 
   const progressPct = Math.min(
     100,
@@ -62,7 +75,7 @@ export function KeyEventsTimeline({ events, videoRef, duration }: Props) {
           className="absolute top-1/2 left-0 h-[2px] -translate-y-1/2 rounded-full bg-accent/60"
           style={{ width: `${progressPct}%` }}
         />
-        {events.map((e, i) => {
+        {normalizedEvents.map((e, i) => {
           const pct = Math.min(
             100,
             Math.max(0, (e.t_seconds / effectiveDuration) * 100)
@@ -85,7 +98,7 @@ export function KeyEventsTimeline({ events, videoRef, duration }: Props) {
       </div>
 
       <ul className="space-y-1.5">
-        {events.map((e, i) => (
+        {normalizedEvents.map((e, i) => (
           <li key={i}>
             <button
               type="button"
