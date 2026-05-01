@@ -20,12 +20,14 @@ import {
   buildStage3bUserPrompt,
   buildStage5UserPrompt,
 } from "@/lib/prompts";
+import { withGeminiRetries } from "@/lib/gemini-retry";
 
-const STAGE3_TIMEOUT_MS = 25_000;
-const STAGE3B_TIMEOUT_MS = 8_000;
-const STAGE5_TIMEOUT_MS = 20_000;
+/** Fits under Vercel `maxDuration` (60s) with upload + Stage 3 + optional 3b. */
+const STAGE3_TIMEOUT_MS = 38_000;
+const STAGE3B_TIMEOUT_MS = 10_000;
+const STAGE5_TIMEOUT_MS = 42_000;
 const FILE_ACTIVE_POLL_INTERVAL_MS = 900;
-const FILE_ACTIVE_POLL_TIMEOUT_MS = 15_000;
+const FILE_ACTIVE_POLL_TIMEOUT_MS = 28_000;
 
 export function withTimeout<T>(
   promise: Promise<T>,
@@ -163,39 +165,41 @@ export async function uploadVideoToGemini(
   buffer: Buffer,
   mimeType: string
 ): Promise<UploadedFile> {
-  const ai = await getClient();
+  return withGeminiRetries("files.upload+ACTIVE", async () => {
+    const ai = await getClient();
 
-  const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
+    const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
 
-  const uploaded = await ai.files.upload({
-    file: blob,
-    config: { mimeType },
-  });
+    const uploaded = await ai.files.upload({
+      file: blob,
+      config: { mimeType },
+    });
 
-  let fileName = uploaded.name;
-  let state = uploaded.state;
-  let uri = uploaded.uri;
-  let resolvedMime = uploaded.mimeType ?? mimeType;
+    let fileName = uploaded.name;
+    let state = uploaded.state;
+    let uri = uploaded.uri;
+    let resolvedMime = uploaded.mimeType ?? mimeType;
 
-  const start = Date.now();
-  while (state === "PROCESSING") {
-    if (Date.now() - start > FILE_ACTIVE_POLL_TIMEOUT_MS) {
-      throw new Error("file_upload_timeout");
+    const start = Date.now();
+    while (state === "PROCESSING") {
+      if (Date.now() - start > FILE_ACTIVE_POLL_TIMEOUT_MS) {
+        throw new Error("file_upload_timeout");
+      }
+      await new Promise((r) => setTimeout(r, FILE_ACTIVE_POLL_INTERVAL_MS));
+      if (!fileName) throw new Error("file_upload_missing_name");
+      const fresh = await ai.files.get({ name: fileName });
+      state = fresh.state;
+      uri = fresh.uri;
+      resolvedMime = fresh.mimeType ?? resolvedMime;
+      fileName = fresh.name ?? fileName;
     }
-    await new Promise((r) => setTimeout(r, FILE_ACTIVE_POLL_INTERVAL_MS));
-    if (!fileName) throw new Error("file_upload_missing_name");
-    const fresh = await ai.files.get({ name: fileName });
-    state = fresh.state;
-    uri = fresh.uri;
-    resolvedMime = fresh.mimeType ?? resolvedMime;
-    fileName = fresh.name ?? fileName;
-  }
 
-  if (state !== "ACTIVE" || !uri) {
-    throw new Error("file_not_active");
-  }
+    if (state !== "ACTIVE" || !uri) {
+      throw new Error("file_not_active");
+    }
 
-  return { uri, mimeType: resolvedMime };
+    return { uri, mimeType: resolvedMime };
+  });
 }
 
 export async function runStage3(
@@ -203,52 +207,51 @@ export async function runStage3(
   originalCall: BasketballCall | null,
   freetext: string | null
 ): Promise<PlayUnderstanding> {
-  const ai = await getClient();
+  return withGeminiRetries("stage3.generateContent", async () => {
+    const ai = await getClient();
 
-  const userPrompt = buildStage3UserPrompt(originalCall, freetext);
+    const userPrompt = buildStage3UserPrompt(originalCall, freetext);
 
-  const call = ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            fileData: { fileUri: file.uri, mimeType: file.mimeType },
-            videoMetadata: { fps: VIDEO_FPS },
-          },
-          { text: userPrompt },
-        ],
+    const call = ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              fileData: { fileUri: file.uri, mimeType: file.mimeType },
+              videoMetadata: { fps: VIDEO_FPS },
+            },
+            { text: userPrompt },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: STAGE3_SYSTEM_PROMPT,
+        responseMimeType: "application/json",
+        responseSchema: PLAY_UNDERSTANDING_RESPONSE_SCHEMA as never,
+        temperature: 0.2,
+        maxOutputTokens: 4096,
       },
-    ],
-    config: {
-      systemInstruction: STAGE3_SYSTEM_PROMPT,
-      responseMimeType: "application/json",
-      responseSchema: PLAY_UNDERSTANDING_RESPONSE_SCHEMA as never,
-      temperature: 0.2,
-      // Flash 2.5 uses thinking tokens by default that count against this cap;
-      // with 2 FPS video the thinking budget can truncate the JSON body.
-      // Bumping to 4096 keeps us safe with plenty of headroom.
-      maxOutputTokens: 4096,
-    },
+    });
+
+    const response = await withTimeout(call, STAGE3_TIMEOUT_MS, "stage3_timeout");
+    const text = response.text ?? "";
+
+    let raw: unknown;
+    try {
+      raw = tryParseJson(text);
+    } catch (err) {
+      const finishReason =
+        response.candidates?.[0]?.finishReason ?? "unknown";
+      console.error(
+        `[Stage 3] JSON parse failed. finishReason=${finishReason} textLength=${text.length} preview=${JSON.stringify(text.slice(0, 300))}`
+      );
+      throw err;
+    }
+    const parsed = PlayUnderstandingSchema.parse(raw);
+    return parsed satisfies PlayUnderstanding;
   });
-
-  const response = await withTimeout(call, STAGE3_TIMEOUT_MS, "stage3_timeout");
-  const text = response.text ?? "";
-
-  let raw: unknown;
-  try {
-    raw = tryParseJson(text);
-  } catch (err) {
-    const finishReason =
-      response.candidates?.[0]?.finishReason ?? "unknown";
-    console.error(
-      `[Stage 3] JSON parse failed. finishReason=${finishReason} textLength=${text.length} preview=${JSON.stringify(text.slice(0, 300))}`
-    );
-    throw err;
-  }
-  const parsed = PlayUnderstandingSchema.parse(raw);
-  return parsed satisfies PlayUnderstanding;
 }
 
 // Schema the refinement pass returns: ONLY the sharpened key_events array,
@@ -281,61 +284,65 @@ export async function runStage3b(
 ): Promise<PlayUnderstanding> {
   if (understanding.key_events.length === 0) return understanding;
 
-  const ai = await getClient();
-  const userPrompt = buildStage3bUserPrompt(understanding.key_events);
+  return withGeminiRetries("stage3b.generateContent", async () => {
+    const ai = await getClient();
+    const userPrompt = buildStage3bUserPrompt(understanding.key_events);
 
-  const call = ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            fileData: { fileUri: file.uri, mimeType: file.mimeType },
-            videoMetadata: { fps: VIDEO_FPS },
-          },
-          { text: userPrompt },
-        ],
+    const call = ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              fileData: { fileUri: file.uri, mimeType: file.mimeType },
+              videoMetadata: { fps: VIDEO_FPS },
+            },
+            { text: userPrompt },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: STAGE3B_SYSTEM_PROMPT,
+        responseMimeType: "application/json",
+        responseSchema: STAGE3B_RESPONSE_SCHEMA as never,
+        temperature: 0.1,
+        maxOutputTokens: 2048,
       },
-    ],
-    config: {
-      systemInstruction: STAGE3B_SYSTEM_PROMPT,
-      responseMimeType: "application/json",
-      responseSchema: STAGE3B_RESPONSE_SCHEMA as never,
-      temperature: 0.1,
-      maxOutputTokens: 2048,
-    },
-  });
+    });
 
-  const response = await withTimeout(call, STAGE3B_TIMEOUT_MS, "stage3b_timeout");
-  const text = response.text ?? "";
-  const raw = tryParseJson(text);
+    const response = await withTimeout(call, STAGE3B_TIMEOUT_MS, "stage3b_timeout");
+    const text = response.text ?? "";
+    const raw = tryParseJson(text);
 
-  const parsed = raw as { key_events?: Array<{ t_seconds: unknown; event: unknown }> };
-  if (!parsed || !Array.isArray(parsed.key_events)) {
-    throw new Error("stage3b_invalid_response");
-  }
+    const parsed = raw as {
+      key_events?: Array<{ t_seconds: unknown; event: unknown }>;
+    };
+    if (!parsed || !Array.isArray(parsed.key_events)) {
+      throw new Error("stage3b_invalid_response");
+    }
 
-  const refined = parsed.key_events.map((e, i) => {
-    const tRaw = e?.t_seconds;
-    const t = typeof tRaw === "number" ? tRaw : parseFloat(String(tRaw ?? 0));
-    const eventName = String(e?.event ?? understanding.key_events[i]?.event ?? "event");
+    const refined = parsed.key_events.map((e, i) => {
+      const tRaw = e?.t_seconds;
+      const t = typeof tRaw === "number" ? tRaw : parseFloat(String(tRaw ?? 0));
+      const eventName = String(
+        e?.event ?? understanding.key_events[i]?.event ?? "event"
+      );
+      return {
+        t_seconds: Math.max(0, Math.min(120, isNaN(t) ? 0 : t)),
+        event: eventName.trim().slice(0, 240) || "event",
+      };
+    });
+
+    if (refined.length !== understanding.key_events.length) {
+      throw new Error("stage3b_event_count_mismatch");
+    }
+
     return {
-      t_seconds: Math.max(0, Math.min(120, isNaN(t) ? 0 : t)),
-      event: eventName.trim().slice(0, 240) || "event",
+      ...understanding,
+      key_events: refined,
     };
   });
-
-  // Only accept if count matches Stage 3 exactly — prevents the model from
-  // silently dropping or adding events during refinement.
-  if (refined.length !== understanding.key_events.length) {
-    throw new Error("stage3b_event_count_mismatch");
-  }
-
-  return {
-    ...understanding,
-    key_events: refined,
-  };
 }
 
 export async function runStage5(
@@ -344,47 +351,49 @@ export async function runStage5(
   freetext: string | null,
   rules: RuleEntry[]
 ): Promise<VerdictResult> {
-  const ai = await getClient();
+  return withGeminiRetries("stage5.generateContent", async () => {
+    const ai = await getClient();
 
-  const userPrompt = buildStage5UserPrompt(
-    understanding,
-    originalCall,
-    freetext,
-    rules
-  );
-
-  const call = ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: userPrompt }],
-      },
-    ],
-    config: {
-      systemInstruction: STAGE5_SYSTEM_PROMPT,
-      responseMimeType: "application/json",
-      responseSchema: VERDICT_RESULT_RESPONSE_SCHEMA as never,
-      temperature: 0.2,
-      maxOutputTokens: 4096,
-    },
-  });
-
-  const response = await withTimeout(call, STAGE5_TIMEOUT_MS, "stage5_timeout");
-  const text = response.text ?? "";
-
-  let raw: unknown;
-  try {
-    raw = tryParseJson(text);
-  } catch (err) {
-    const finishReason =
-      response.candidates?.[0]?.finishReason ?? "unknown";
-    console.error(
-      `[Stage 5] JSON parse failed. finishReason=${finishReason} textLength=${text.length} preview=${JSON.stringify(text.slice(0, 300))}`
+    const userPrompt = buildStage5UserPrompt(
+      understanding,
+      originalCall,
+      freetext,
+      rules
     );
-    throw err;
-  }
-  const parsed = VerdictResultSchema.parse(raw);
 
-  return validateAndRepairVerdict(parsed, rules, originalCall, understanding);
+    const call = ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: userPrompt }],
+        },
+      ],
+      config: {
+        systemInstruction: STAGE5_SYSTEM_PROMPT,
+        responseMimeType: "application/json",
+        responseSchema: VERDICT_RESULT_RESPONSE_SCHEMA as never,
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+      },
+    });
+
+    const response = await withTimeout(call, STAGE5_TIMEOUT_MS, "stage5_timeout");
+    const text = response.text ?? "";
+
+    let raw: unknown;
+    try {
+      raw = tryParseJson(text);
+    } catch (err) {
+      const finishReason =
+        response.candidates?.[0]?.finishReason ?? "unknown";
+      console.error(
+        `[Stage 5] JSON parse failed. finishReason=${finishReason} textLength=${text.length} preview=${JSON.stringify(text.slice(0, 300))}`
+      );
+      throw err;
+    }
+    const parsed = VerdictResultSchema.parse(raw);
+
+    return validateAndRepairVerdict(parsed, rules, originalCall, understanding);
+  });
 }
